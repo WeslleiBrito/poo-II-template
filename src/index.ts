@@ -1,9 +1,11 @@
 import express, { Request, Response } from 'express'
 import cors from 'cors'
 import { TAccountDB, TAccountDBPost, TUserDB, TUserDBPost } from './types'
-import { db } from './database/knex'
+import { BaseDatabase, db } from './database/BaseDatabase'
 import { User } from './models/User'
 import { Account } from './models/Account'
+import { UserDatabase } from './database/UserDataBase'
+
 
 const app = express()
 
@@ -34,17 +36,10 @@ app.get("/ping", async (req: Request, res: Response) => {
 
 app.get("/users", async (req: Request, res: Response) => {
     try {
-        const q = req.query.q
+        const q = req.query.q as string
 
-        let usersDB
-
-        if (q) {
-            const result: TUserDB[] = await db("users").where("name", "LIKE", `%${q}%`)
-            usersDB = result
-        } else {
-            const result: TUserDB[] = await db("users")
-            usersDB = result
-        }
+        const userDatabase = new UserDatabase()
+        const usersDB =  await userDatabase.findUser(q)
 
         const users: User[] = usersDB.map((userDB) => new User(
             userDB.id,
@@ -70,6 +65,38 @@ app.get("/users", async (req: Request, res: Response) => {
     }
 })
 
+app.get("/users/:id", async (req:Request, res: Response) => {
+    
+    try {
+        
+        const id = req.params.id
+
+        const userDatabase = new UserDatabase()
+        const userDb = await userDatabase.findUserById(id)
+
+        if(!userDb){
+            res.status(400)
+            throw new Error()
+        }
+
+        const result: User = new User(
+            userDb.id,
+            userDb.name,
+            userDb.email,
+            userDb.password,
+            userDb.created_at
+        )
+        
+        res.status(200).json(result)
+
+    } catch (error) {
+        res.json(
+            {
+                error: error
+            }
+        )
+    }
+})
 app.post("/users", async (req: Request, res: Response) => {
     try {
         const { id, name, email, password } = req.body
@@ -109,17 +136,12 @@ app.post("/users", async (req: Request, res: Response) => {
             new Date().toISOString()
         ) // yyyy-mm-ddThh:mm:sssZ
 
-        const newUserDB: TUserDB = {
-            id: newUser.getId(),
-            name: newUser.getName(),
-            email: newUser.getEmail(),
-            password: newUser.getPassword(),
-            created_at: newUser.getCreatedAt()
-        }
+        const userDatabase = new UserDatabase()
+        
+        await userDatabase.insertUser(newUser)
+      
 
-        await db("users").insert(newUserDB)
-
-        res.status(201).send(newUser)
+        res.status(201).send('Conta criada com sucesso!')
     } catch (error) {
         console.log(error)
 
